@@ -129,7 +129,7 @@ class Client(threading.Thread):
         self._address = (ip, port)
         self._add_str = ip + ":" + str(port)
         self.thread_stop = False
-        self._md5s = dict()
+        self._md5s = dict()  #每次发送的md5和对应的时间
         self._stream = ""
         self._stop = False
         self._time = _time
@@ -164,8 +164,13 @@ class Client(threading.Thread):
 
         self._stream.read_bytes(length, self.read_body)
 
+    """
+        md5在body的前32位字节，
+        取出md5 在发送时存在self._md5s的查找同一个md5对应的时间
+        用但前时间减去self._md5s查找出的时间打印
+        收到数据后删除self._md5s的值
+    """
     def read_body(self, body):
-        # logging.info("read body : %s" % body)
         md5 = body[:32]
         if self._md5s.get(md5) is not None:
             start_time = self._md5s.pop(md5)
@@ -175,6 +180,12 @@ class Client(threading.Thread):
 
         self._stream.read_bytes(24, self.read_header)
 
+    """
+    send 循环发送数据，sleep时间命令参数给定，默认时1s
+    在给定发送数据长度会根据random_str()生成一个随机指定长度的字符串
+    body ＝ md5(32位) + length(随机字符长度)
+    发送结束纪录md5和当前时间
+    """
     def send(self):
 
         while 1:
@@ -185,7 +196,6 @@ class Client(threading.Thread):
             header[4] = len(body)
 
             elem = [socket.htonl(x) for x in header]
-            # header_net = pack('6I', elem[0], elem[1], elem[2], elem[3], elem[4], elem[5])
             header_net = pack('6I', *elem)
             msg = header_net + body
 
@@ -202,10 +212,8 @@ class Client(threading.Thread):
             header_str = ', '.join([str(x) for x in header])
             logging.debug('send header: (%d : %s) to %s:%d' % (len(header), header_str,
                                                                self._address[0], self._address[1]))
-            self._md5s[md5] = time.time()
-            # logging.debug('send body: (%d : %s) to %s:%d' % (len(body), body,
-            #                                                  self._address[0], self._address[1]))
 
+            self._md5s[md5] = time.time()
             time.sleep(float(self._time))
 
     def on_close(self):
@@ -240,6 +248,8 @@ if __name__ == '__main__':
 
     # tornado.ioloop.IOLoop.current().start()
 
+    """主线程等待子线程退出
+    """
     for t in THREADS:
         t.join()
 
